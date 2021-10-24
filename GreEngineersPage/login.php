@@ -1,3 +1,10 @@
+<?php
+    error_reporting(0);
+	session_start();
+    if ($_SESSION['user'] != 0){
+        header('Location: index_dashboard.php');
+    }
+?>
 <!DOCTYPE html>
 <html lang="en" class="h-100">
 
@@ -82,7 +89,7 @@
                                         <button style="background-color: #436d8a !important; color: white !important;" type="button" id="botonRegistra" class="btn bg-white text-primary btn-block" onclick="iniciarSesion(user.value, pass.value, event)">Ingresar</button>
                                     </div>
                                     <div class="new-account mt-3 text-center">
-                                        <p><a class="text-info" href="index.html">Página Principal</a></p>
+                                        <p><a class="text-info" href="index.php">Página Principal</a></p>
                                     </div>
                                 </div>
                             </div>

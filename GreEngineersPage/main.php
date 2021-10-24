@@ -2,8 +2,7 @@
     session_start();
     error_reporting(0);
     include 'conexion.php';
-
-    $bd = new MYSQLIFunctions();
+    $bd = OpenConnection();
     $user = $_SESSION['user'];
     date_default_timezone_set('America/Mexico_City');
     $hoy=date('Y-m-d');
@@ -11,33 +10,44 @@
     $fechaHora=date('Y-m-d H:i:s', time());
     $meses = array("01"=>"Enero", "02"=>"Febrero", "03"=>"Marzo" , "04"=>"Abril" , "05"=>"Mayo" , "06"=>"Junio" , "07"=>"Julio" , "08"=>"Agosto" , "09"=>"Septiembre" , "10"=>"Octubre" , "11"=>"Noviembre", "12"=>"Diciembre");
     $diasSemana = array("Domingo", "Lunes", "Martes", "Miércoles" , "Jueves" , "Viernes" , "Sábado");
+    $tipo = $_POST['tipo'];
+
+    if($tipo == 'cerrarSesion'){
+        session_destroy();
+        echo "ok";
+    }
 
     if($tipo == 'login'){
         $usuario = utf8_decode($_POST['usuario']);
         $contrasena = utf8_decode($_POST['contrasena']);
         // Cambiar a prepare
         // $saltBD = $bd->select("SELECT Salt as variable FROM usuarios WHERE Usuario = '".$usuario."' and Estatus>0 ")['variable'];
-        $datosUser = $bd->select("SELECT Id, Salt, Estatus FROM usuarios WHERE Usuario = '".$usuario."' ");
-
-        if($datosUser['Id'] == ''){
+        $datosUser = $bd->query("SELECT Id, Salt, Estatus FROM usuarios WHERE Usuario = '".$usuario."'");
+        $valores = mysqli_fetch_array($datosUser);
+        if($valores['Id'] == ''){
             echo  "noExiste";
+            CloseConnection($bd);
             exit;
-        }else if($datosUser['Estatus'] == 0){
+        }else if($valores['Estatus'] == 0){
             echo  "noActivo";
+            CloseConnection($bd);
             exit;
         }
 
-        $contrasenaFinal = hash("sha256", $datosUser['Salt'].$contrasena);
-        $login = $bd->query("SELECT Id FROM usuarios where Usuario = '".$usuario."' and Contrasena = '".$contrasenaFinal."' and Estatus>0");
-        if($bd->rows($login) > 0){
+        $contrasenaFinal = hash("sha256", $valores['Salt'].$contrasena);
+        $login = $bd->query("SELECT Id, Nombre, ApellidoP FROM usuarios where Usuario = '".$usuario."' and Contrasena = '".$contrasenaFinal."' and Estatus>0");
+        if($login->num_rows > 0){
             session_start();
-            while($l = $bd->fassoc($login)){
-                $_SESSION['user'] = $l['Id'];
-                $_SESSION['sesion'] = hash("sha256", "sesvalida");
-            }
+            $valores = mysqli_fetch_array($login);
+            $_SESSION['user'] = $valores['Id'];
+            $_SESSION['nombre'] = $valores['Nombre'];
+            $_SESSION['apellidoP'] = $valores['ApellidoP'];
+            $_SESSION['sesion'] = hash("sha256", "sesvalida");
             echo "ok";
+            CloseConnection($bd);
         }else {
-            "error";
+            echo "error";
+            CloseConnection($bd);
         }
     }
 
@@ -48,44 +58,20 @@
         $mate=utf8_decode($_POST['materno']);
         $correo=utf8_decode($_POST['usuario']);
         $tipoU=$_POST['tipoU'];
-        $emp=$_POST['emp'];
-        $pass=utf8_decode($bd->escapestr($_POST['contrasenaSHA']));
-        $home=$_POST['home'];
+        $pass=utf8_decode($_POST['contrasenaSHA']);
 
-        $exist=$bd->select("SELECT Id as variable FROM `usuarios` WHERE Usuario='".$correo."'")['variable'];
-        if($exist>0){
+        $exist=$bd->query("SELECT Id FROM Usuarios WHERE Usuario='".$correo."'");
+
+        if($exist->num_rows>0){
             echo "exist";
+            CloseConnection($bd);
             return;
         }
-
         $salt = hash("sha256", openssl_random_pseudo_bytes(64));
         $contrasenaFinal = hash("sha256", $salt.$pass);
 
-        $insert="INSERT INTO `usuarios` (`Tipo`, `Rol`, `Usuario`, `Nombre`, `ApellidoP`, `ApellidoM`, `Contrasena`, `Salt`, `Inicio`,  `Empresa`, `Sucursal`, `Estatus`) VALUES ('".$tipoU."', 99, '".$correo."', '".$name."', '".$pate."', '".$mate."', '".$contrasenaFinal."', '".$salt."', '".$home."', '".$emp."', 0, 1)";
+        $insert="INSERT INTO `Usuarios` (`Tipo`, `Nombre`, `ApellidoP`, `ApellidoM`, `Contrasena`, `Salt`, `Estatus`, `Usuario`) VALUES ('".$tipoU."', '".$name."', '".$pate."', '".$mate."', '".$contrasenaFinal."', '".$salt."', 1, '".$correo."')";
         if($bd->query($insert)){
-            $id = $bd->select("SELECT MAX(Id) as max FROM `usuarios` WHERE Usuario='".$correo."' AND Estatus>0 ")['max'];
-            $plan = $bd->select("SELECT Plan as variable FROM `empresas` WHERE Id ='".$emp."' AND Estatus>0 ")['variable'];
-
-            $consulta1 = $bd->query("SELECT Modulo, Escritura, Edicion, Eliminar FROM roles WHERE Plan = '".$plan."' AND Rol = 99 AND Estatus > 0");
-            while($res1=$bd->fassoc($consulta1)){
-                $insertModulo=$bd->query("INSERT INTO `permisos` (`Usuario`, `Modulo`, `Escritura`, `Edicion`, `Eliminar`) VALUES ('".$id."', '".$res1['Modulo']."', '".$res1['Escritura']."', '".$res1['Edicion']."', '".$res1['Eliminar']."') ");
-            }
-            //permiso a cuenta principal
-            $consulta=$bd->query("SELECT Id, Usuarios FROM cuentas WHERE Empresa='".$empresa."'  and Sucursal='".$sucursal."' ORDER BY Id ASC LIMIT 1");
-            while($res=$bd->fassoc($consulta)){
-                $usuarios=json_decode($res['Usuarios'], true);
-                $idCuenta=$res['Id'];
-            }
-            if($usuarios==""){
-              $users['Usuario0']=$id;
-            }else{
-              foreach($usuarios as $index => $val){
-                  $users[$index]=$val;
-              }
-              $index++;
-              $users[$index]=$id;
-            }
-            $query=$bd->query("UPDATE `cuentas` SET `Usuarios`='".json_encode($users)."' WHERE Id='".$idCuenta."' and Empresa='".$empresa."' and Sucursal='".$sucursal."' ");
             echo "ok";
         }
         // Nota: si se modifica algo de estas lineas, verificar si es necesario cambiar la función "nuevoRegistro"
